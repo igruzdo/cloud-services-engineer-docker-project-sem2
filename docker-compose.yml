@@ -1,0 +1,187 @@
+services:
+  backend-prod:
+    image: ${DOCKER_USER}/docker-project-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - ${BACKEND_PORT:-8081}:8081
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+        reservations:
+          cpus: '0.3'
+          memory: 64M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      replicas: 5
+    profiles:
+      - prod
+    networks:
+      - app-network-prod
+  
+  backend-dev:
+    image: ${DOCKER_USER}/docker-project-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 100M
+        reservations:
+          cpus: '0.2'
+          memory: 64M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      mode: replicated
+      replicas: 3
+    profiles:
+      - dev
+    networks:
+      - app-network-dev
+
+  frontend-prod:
+    image: ${DOCKER_USER}/docker-project-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=${NODE_ENV:-production}
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - BACKEND_PORT=${BACKEND_PORT:-prod}
+      - STAND=prod
+    ports:
+      - ${FRONTEND_PORT:-80}:80
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - backend-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 100M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      replicas: 1
+    profiles:
+      - prod
+    networks:
+      - app-network-prod
+    volumes:
+      - nginx-cache-prod:/var/cache/nginx:rw
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+  
+  frontend-dev:
+    image: ${DOCKER_USER}/docker-project-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=${NODE_ENV:-development}
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - BACKEND_PORT=${BACKEND_PORT:-development}
+      - STAND=dev
+    ports:
+      - ${FRONTEND_PORT:-80}:80
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - backend-dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    user: appuser
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 100M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      replicas: 1
+    profiles:
+      - dev
+    networks:
+      - app-network-dev
+    volumes:
+      - nginx-cache-dev:/var/cache/nginx:rw
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+networks:
+  app-network-dev:
+    driver: bridge
+  app-network-prod:
+    driver: bridge
+
+volumes:
+  nginx-cache-dev:
+  nginx-cache-prod:
